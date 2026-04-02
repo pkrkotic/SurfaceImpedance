@@ -1,0 +1,43 @@
+{
+  "base_layer": {
+    "name": "Base",
+    "material": "Stainless Steel",
+    "note": "half-space",
+    "epsilon": [1.0, 0.0],
+    "mu": [1.0, 0.0],
+    "sigma": 1350000.0,
+    "tau": 0.0
+  },
+  "layers": [
+    {
+      "name": "Layer 1",
+      "material": "Copper",
+      "note": "",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 58000000.0,
+      "tau": 0.0,
+      "thickness": 75e-6
+    },
+    {
+      "name": "Layer 2",
+      "material": "Titanium",
+      "note": "",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 2400000.0,
+      "tau": 0.0,
+      "thickness": 50e-9
+    },
+	{
+      "name": "Layer 3",
+      "material": "amorph. Carbon",
+      "note": "",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 10000.0,
+      "tau": 0.0,
+      "thickness": 100e-9
+    }
+  ]
+}
