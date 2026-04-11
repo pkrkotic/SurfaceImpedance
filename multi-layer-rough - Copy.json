@@ -1,0 +1,47 @@
+{
+  "base_layer": {
+    "name": "Base",
+    "material": "Stainless Steel",
+    "note": "half-space",
+    "epsilon": [1.0, 0.0],
+    "mu": [1.0, 0.0],
+    "sigma": 1350000.0,
+    "tau": 0.0,
+    "rq": 80e-9
+  },
+  "layers": [
+    {
+      "name": "Layer 1",
+      "material": "Copper",
+      "note": "rq is the vacuum-to-copper transition",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 58000000.0,
+      "tau": 0.0,
+      "thickness": 75e-9,
+      "rq": 400e-9
+    },
+    {
+      "name": "Layer 2",
+      "material": "Titanium",
+      "note": "rq is the copper-to-titanium transition",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 2400000.0,
+      "tau": 0.0,
+      "thickness": 50e-9,
+      "rq": 150e-9
+    },
+    {
+      "name": "Layer 3",
+      "material": "amorph. Carbon",
+      "note": "rq is the titanium-to-carbon transition",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 10000.0,
+      "tau": 0.0,
+      "thickness": 100e-6,
+      "rq": 100e-9
+    }
+  ]
+}

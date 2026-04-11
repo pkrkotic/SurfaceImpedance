@@ -12,8 +12,12 @@ from surface_impedance.cli import (
     build_parser,
     collect_cases,
     default_params_for_model,
+    default_rough_multi_step_size,
+    default_rough_stack_step_size,
     default_rough_single_step_size,
     make_frequency_grid,
+    profile_layer_centers_um,
+    ComparisonCase,
 )
 from surface_impedance.io_utils import build_output_rows, export_data
 
@@ -113,6 +117,60 @@ class TestCliHelpers(unittest.TestCase):
         self.assertEqual(args.profile_quantity, ["conductivity", "power-loss"])
         self.assertEqual(args.profile_plot, Path("profile.png"))
 
+    def test_parser_accepts_profile_x_limits_in_um(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "--profile-x-min-um",
+                "-0.5",
+                "--profile-x-max-um",
+                "2.0",
+            ]
+        )
+        self.assertEqual(args.profile_x_min_um, -0.5)
+        self.assertEqual(args.profile_x_max_um, 2.0)
+
+    def test_profile_layer_centers_use_air_facing_last_layer_convention(self) -> None:
+        case = ComparisonCase(
+            label="rough",
+            model="rough-multi",
+            params={
+                "base_layer": {"sigma": 2.1e7, "rq": 60e-9},
+                "layers": [
+                    {"name": "Layer 1", "material": "Cu", "thickness": 0.75e-6, "sigma": 5.8e7, "rq": 60e-9},
+                    {"name": "Layer 2", "material": "Ni", "thickness": 2.75e-6, "sigma": 1.8e6, "rq": 60e-9},
+                    {"name": "Layer 3", "material": "Au", "thickness": 1.25e-6, "sigma": 8.6e6, "rq": 60e-9},
+                ],
+            },
+        )
+        centers = profile_layer_centers_um(case)
+        self.assertEqual(len(centers), 3)
+        self.assertEqual(centers[0][1], "Au")
+        self.assertAlmostEqual(centers[0][0], 0.625)
+        self.assertEqual(centers[1][1], "Ni")
+        self.assertAlmostEqual(centers[1][0], 2.625)
+        self.assertEqual(centers[2][1], "Cu")
+        self.assertAlmostEqual(centers[2][0], 4.375)
+
+    def test_profile_layer_centers_support_multi_layer_cases(self) -> None:
+        case = ComparisonCase(
+            label="smooth",
+            model="multi-layer",
+            params={
+                "base_layer": {"sigma": 1.4e6},
+                "layers": [
+                    {"name": "Layer 1", "material": "Copper", "thickness": 75e-6, "sigma": 5.8e7},
+                    {"name": "Layer 2", "material": "Nickel", "thickness": 2e-6, "sigma": 1.5e7},
+                ],
+            },
+        )
+        centers = profile_layer_centers_um(case)
+        self.assertEqual(len(centers), 2)
+        self.assertEqual(centers[0][1], "Nickel")
+        self.assertAlmostEqual(centers[0][0], 1.0)
+        self.assertEqual(centers[1][1], "Copper")
+        self.assertAlmostEqual(centers[1][0], 39.5)
+
     def test_frequency_unit_factor_maps_units(self) -> None:
         self.assertEqual(_frequency_unit_factor("Hz"), 1.0)
         self.assertEqual(_frequency_unit_factor("MHz"), 1e6)
@@ -124,6 +182,20 @@ class TestCliHelpers(unittest.TestCase):
     def test_default_rough_single_step_size_scales_with_rq(self) -> None:
         self.assertEqual(default_rough_single_step_size(1e-6), 4e-8)
 
+    def test_default_rough_multi_step_size_uses_smaller_roughness(self) -> None:
+        self.assertEqual(default_rough_multi_step_size(1e-6, 5e-7), 2e-8)
+
+    def test_default_rough_stack_step_size_uses_smallest_json_roughness(self) -> None:
+        self.assertAlmostEqual(
+            default_rough_stack_step_size(
+                {
+                    "base_layer": {"rq": 2e-7},
+                    "layers": [{"rq": 1e-6}, {"rq": 5e-7}],
+                }
+            ),
+            8e-9,
+        )
+
     def test_rough_single_defaults_use_requested_convention(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["--model", "rough-single", "--rq", "1e-6"])
@@ -131,6 +203,141 @@ class TestCliHelpers(unittest.TestCase):
         self.assertEqual(params["step_size"], 4e-8)
         self.assertEqual(params["xmin_factor"], -5.0)
         self.assertEqual(params["domain_factor"], 10.0)
+
+    def test_rough_multi_defaults_use_requested_convention(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "--model",
+                "rough-multi",
+                "--rq01",
+                "1e-6",
+                "--rq12",
+                "5e-7",
+                "--t1",
+                "2e-6",
+            ]
+        )
+        params = default_params_for_model("rough-multi", args)
+        self.assertEqual(params["step_size"], 2e-8)
+        self.assertEqual(params["t1"], 2e-6)
+        self.assertEqual(params["xmin_factor"], -5.0)
+        self.assertEqual(params["domain_factor"], 10.0)
+
+    def test_rough_multi_defaults_can_load_layers_file(self) -> None:
+        target = self.output_dir / "rough-layers.json"
+        target.write_text(
+            json.dumps(
+                {
+                    "base_layer": {
+                        "epsilon": [1.0, 0.0],
+                        "mu": [1.0, 0.0],
+                        "sigma": 1.35e6,
+                        "tau": 0.0,
+                        "rq": 0.1e-6,
+                    },
+                    "layers": [
+                        {
+                            "epsilon": [1.0, 0.0],
+                            "mu": [1.0, 0.0],
+                            "sigma": 5.8e7,
+                            "tau": 0.0,
+                            "thickness": 75e-6,
+                            "rq": 0.5e-6,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        parser = build_parser()
+        args = parser.parse_args(["--model", "rough-multi", "--layers-file", str(target)])
+        params = default_params_for_model("rough-multi", args)
+        self.assertIn("base_layer", params)
+        self.assertIn("layers", params)
+        self.assertEqual(params["step_size"], 0.1e-6 / 25.0)
+
+    def test_rough_multi_case_uses_its_own_roughness_for_default_step_size(self) -> None:
+        class Args:
+            case = [
+                "label=rough-multi-a,model=rough-multi,sigma1=5.8e7,sigma2=4.2e7,rq01=1e-12,rq12=2e-12,t1=5e-9",
+            ]
+            model = "normal-skin"
+            sigma = 5.8e7
+            sigma_metal = 5.8e7
+            sigma1 = 5.8e7
+            sigma2 = 4.2e7
+            mu_r = 1.0
+            tau = 2.5e-14
+            rq = 0.5e-6
+            rq01 = 0.5e-6
+            rq12 = 0.5e-6
+            t1 = 2e-6
+            step_size = None
+            xmin_factor = -5.0
+            domain_factor = 10.0
+            epsr_real = 1.0
+            epsr_imag = 0.0
+            mur_real = 1.0
+            mur_imag = 0.0
+            layers_file = None
+
+        cases = collect_cases(Args())
+        self.assertEqual(cases[0].params["step_size"], 1e-12 / 25.0)
+
+    def test_rough_multi_case_can_load_layers_file(self) -> None:
+        target = self.output_dir / "rough-case-layers.json"
+        target.write_text(
+            json.dumps(
+                {
+                    "base_layer": {
+                        "epsilon": [1.0, 0.0],
+                        "mu": [1.0, 0.0],
+                        "sigma": 1.35e6,
+                        "tau": 0.0,
+                        "rq": 0.08e-6,
+                    },
+                    "layers": [
+                        {
+                            "epsilon": [1.0, 0.0],
+                            "mu": [1.0, 0.0],
+                            "sigma": 5.8e7,
+                            "tau": 0.0,
+                            "thickness": 75e-6,
+                            "rq": 0.4e-6,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        class Args:
+            case = [f"label=rough-json,model=rough-multi,layers_file={target}"]
+            model = "normal-skin"
+            sigma = 5.8e7
+            sigma_metal = 5.8e7
+            sigma1 = 5.8e7
+            sigma2 = 4.2e7
+            mu_r = 1.0
+            tau = 2.5e-14
+            rq = 0.5e-6
+            rq01 = 0.5e-6
+            rq12 = 0.5e-6
+            t1 = 2e-6
+            step_size = None
+            xmin_factor = -5.0
+            domain_factor = 10.0
+            epsr_real = 1.0
+            epsr_imag = 0.0
+            mur_real = 1.0
+            mur_imag = 0.0
+            layers_file = None
+
+        cases = collect_cases(Args())
+        self.assertEqual(cases[0].label, "rough-json")
+        self.assertIn("base_layer", cases[0].params)
+        self.assertEqual(cases[0].params["step_size"], 0.08e-6 / 25.0)
 
     def test_parser_accepts_layers_file(self) -> None:
         parser = build_parser()

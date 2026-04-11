@@ -60,6 +60,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="RMS roughness in m for the rough-single model.",
     )
     parser.add_argument(
+        "--sigma1",
+        type=float,
+        default=5.8e7,
+        help="Conductivity of material 1 in S/m for the rough-multi model.",
+    )
+    parser.add_argument(
+        "--sigma2",
+        type=float,
+        default=4.2e7,
+        help="Conductivity of material 2 in S/m for the rough-multi model.",
+    )
+    parser.add_argument(
+        "--rq01",
+        type=float,
+        default=0.5e-6,
+        help="RMS roughness in m for the vacuum/material-1 transition.",
+    )
+    parser.add_argument(
+        "--rq12",
+        type=float,
+        default=0.5e-6,
+        help="RMS roughness in m for the material-1/material-2 transition.",
+    )
+    parser.add_argument(
+        "--t1",
+        type=float,
+        default=2.0e-6,
+        help="Mean thickness of material 1 in m for the rough-multi model.",
+    )
+    parser.add_argument(
         "--step-size",
         type=float,
         default=None,
@@ -106,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--profile-plot",
         type=Path,
-        help="Save the requested x-profile plot to this image path.",
+        help="Save the requested z-profile plot to this image path.",
     )
     parser.add_argument("--show-plot", action="store_true", help="Display the plot window.")
     parser.add_argument(
@@ -135,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--profile-frequency",
         type=float,
-        help="Single frequency in Hz used for optional x-profile diagnostics.",
+        help="Single frequency in Hz used for optional z-profile diagnostics.",
     )
     parser.add_argument(
         "--profile-quantity",
@@ -143,9 +173,19 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["conductivity", "magnetic-field", "power-loss"],
         default=[],
         help=(
-            "Profile quantity to plot versus x. Repeat to show multiple quantities. "
+            "Profile quantity to plot versus z. Repeat to show multiple quantities. "
             "If omitted while --profile-frequency is set, all quantities are plotted."
         ),
+    )
+    parser.add_argument(
+        "--profile-x-min-um",
+        type=float,
+        help="Optional lower x-limit for profile plots in um.",
+    )
+    parser.add_argument(
+        "--profile-x-max-um",
+        type=float,
+        help="Optional upper x-limit for profile plots in um.",
     )
     return parser
 
@@ -168,6 +208,16 @@ def default_rough_single_step_size(rq: float) -> float:
     return rq / 25.0
 
 
+def default_rough_multi_step_size(rq01: float, rq12: float) -> float:
+    return min(rq01, rq12) / 25.0
+
+
+def default_rough_stack_step_size(stack_cfg: dict[str, object]) -> float:
+    rq_values = [float(layer["rq"]) for layer in stack_cfg["layers"]]
+    rq_values.append(float(stack_cfg["base_layer"]["rq"]))
+    return min(rq_values) / 25.0
+
+
 def default_params_for_model(model_name: str, args: argparse.Namespace) -> dict[str, float]:
     shared = {"mu_r": args.mu_r}
     if model_name == "normal-skin":
@@ -188,6 +238,32 @@ def default_params_for_model(model_name: str, args: argparse.Namespace) -> dict[
         return {
             "sigma_metal": args.sigma_metal,
             "rq": args.rq,
+            "mu_r": args.mu_r,
+            "step_size": step_size,
+            "xmin_factor": args.xmin_factor,
+            "domain_factor": args.domain_factor,
+        }
+    if model_name == "rough-multi":
+        if args.layers_file:
+            params = load_layers_from_file(args.layers_file)
+            step_size = args.step_size
+            if step_size is None:
+                step_size = default_rough_stack_step_size(params)
+            return {
+                **params,
+                "step_size": step_size,
+                "xmin_factor": args.xmin_factor,
+                "domain_factor": args.domain_factor,
+            }
+        step_size = args.step_size
+        if step_size is None:
+            step_size = default_rough_multi_step_size(args.rq01, args.rq12)
+        return {
+            "sigma1": args.sigma1,
+            "sigma2": args.sigma2,
+            "rq01": args.rq01,
+            "rq12": args.rq12,
+            "t1": args.t1,
             "mu_r": args.mu_r,
             "step_size": step_size,
             "xmin_factor": args.xmin_factor,
@@ -220,6 +296,28 @@ def default_case_for_args(args: argparse.Namespace) -> ComparisonCase:
     )
 
 
+def profile_layer_centers_um(case: ComparisonCase) -> list[tuple[float, str]]:
+    if case.model not in {"rough-multi", "multi-layer"}:
+        return []
+
+    layers = case.params.get("layers")
+    if isinstance(layers, list) and layers:
+        centers: list[tuple[float, str]] = []
+        position_m = 0.0
+        for index, layer in enumerate(reversed(layers), start=1):
+            thickness_m = float(layer["thickness"])
+            center_um = (position_m + 0.5 * thickness_m) * 1e6
+            label = str(layer.get("material") or layer.get("name") or f"Layer {index}")
+            centers.append((center_um, label))
+            position_m += thickness_m
+        return centers
+
+    if {"t1"} <= case.params.keys():
+        return [(0.5 * float(case.params["t1"]) * 1e6, "Layer 1")]
+
+    return []
+
+
 def parse_case_definition(definition: str, args: argparse.Namespace, index: int) -> ComparisonCase:
     raw_parts = [part.strip() for part in definition.split(",") if part.strip()]
     parsed: dict[str, str] = {}
@@ -237,10 +335,30 @@ def parse_case_definition(definition: str, args: argparse.Namespace, index: int)
         raise ValueError(f"Unknown model '{model_name}' in case {index}. Available: {available}")
 
     label = parsed.get("label", f"{model_name}-{index}")
-    params = default_params_for_model(model_name, args)
+    case_layers_file = parsed.get("layers_file")
+
+    if case_layers_file is not None and model_name not in {"multi-layer", "rough-multi"}:
+        raise ValueError(
+            f"Parameter 'layers_file' is only valid for multilayer models in case {index}."
+        )
+
+    if case_layers_file is not None:
+        params = load_layers_from_file(Path(case_layers_file))
+        if model_name == "rough-multi":
+            step_size = args.step_size
+            if step_size is None:
+                step_size = default_rough_stack_step_size(params)
+            params = {
+                **params,
+                "step_size": step_size,
+                "xmin_factor": args.xmin_factor,
+                "domain_factor": args.domain_factor,
+            }
+    else:
+        params = default_params_for_model(model_name, args)
 
     for key, raw_value in parsed.items():
-        if key in {"label", "model"}:
+        if key in {"label", "model", "layers_file"}:
             continue
         if key not in params:
             raise ValueError(
@@ -250,6 +368,11 @@ def parse_case_definition(definition: str, args: argparse.Namespace, index: int)
 
     if model_name == "rough-single" and "step_size" not in parsed:
         params["step_size"] = default_rough_single_step_size(float(params["rq"]))
+    if model_name == "rough-multi" and "step_size" not in parsed and case_layers_file is None:
+        params["step_size"] = default_rough_multi_step_size(
+            float(params["rq01"]),
+            float(params["rq12"]),
+        )
 
     return ComparisonCase(label=label, model=model_name, params=params)
 
@@ -513,6 +636,8 @@ def maybe_plot_profiles(
     plot_path: Path | None,
     show_plot: bool,
     requested_quantities: list[str],
+    x_min_um: float | None = None,
+    x_max_um: float | None = None,
 ) -> Path | None:
     if not cases:
         return None
@@ -529,7 +654,7 @@ def maybe_plot_profiles(
     quantities = requested_quantities or ["conductivity", "magnetic-field", "power-loss"]
     quantity_specs = {
         "conductivity": ("Normalized conductivity", "normalized_conductivity", "-"),
-        "magnetic-field": ("Normalized |B(x)|", "normalized_magnetic_field", "--"),
+        "magnetic-field": ("Normalized |B(z)|", "normalized_magnetic_field", "--"),
         "power-loss": (
             "Normalized power-loss density",
             "normalized_power_loss_density",
@@ -546,6 +671,11 @@ def maybe_plot_profiles(
     )
     global_x_min_um = min(float(np.min(profile.x_m * 1e6)) for _, profile in cases)
     global_x_max_um = max(float(np.max(profile.x_m * 1e6)) for _, profile in cases)
+    plot_x_min_um = global_x_min_um if x_min_um is None else x_min_um
+    plot_x_max_um = global_x_max_um if x_max_um is None else x_max_um
+
+    if plot_x_min_um >= plot_x_max_um:
+        raise ValueError("profile-x-min-um must be smaller than profile-x-max-um.")
 
     for row_index, (case, profile) in enumerate(cases):
         ax = axes[row_index][0]
@@ -553,19 +683,45 @@ def maybe_plot_profiles(
         for quantity_index, quantity in enumerate(quantities):
             label, attribute, linestyle = quantity_specs[quantity]
             color = palette[quantity_index % len(palette)]
-            ax.plot(
-                x_um,
-                getattr(profile, attribute),
-                linewidth=2.5,
-                linestyle=linestyle,
-                color=color,
-                label=label,
-            )
+            values = getattr(profile, attribute)
+            if quantity in {"conductivity", "power-loss"} and case.model == "multi-layer":
+                ax.step(
+                    x_um,
+                    values,
+                    where="post",
+                    linewidth=2.5,
+                    linestyle="-" if quantity == "conductivity" else ":",
+                    color=color,
+                    label=label,
+                )
+            else:
+                ax.plot(
+                    x_um,
+                    values,
+                    linewidth=2.5,
+                    linestyle=linestyle,
+                    color=color,
+                    label=label,
+                )
         ax.axvline(0.0, color="black", linestyle=":", linewidth=1.2)
-        ax.set_xlim(global_x_min_um, global_x_max_um)
-        ax.set_xlabel("x [um]")
+        for center_um, center_label in profile_layer_centers_um(case):
+            if plot_x_min_um <= center_um <= plot_x_max_um:
+                ax.axvline(center_um, color="#666666", linestyle="-.", linewidth=1.0, alpha=0.8)
+                ax.text(
+                    center_um,
+                    0.98,
+                    center_label,
+                    rotation=90,
+                    va="top",
+                    ha="right",
+                    transform=ax.get_xaxis_transform(),
+                    fontsize=8,
+                    color="#555555",
+                )
+        ax.set_xlim(plot_x_min_um, plot_x_max_um)
+        ax.set_xlabel(r"z [$\mu$m]")
         ax.set_ylabel("Normalized value")
-        ax.set_title(f"x-profile diagnostics: {case.label}", fontsize=10)
+        ax.set_title(f"z-profile diagnostics: {case.label}", fontsize=10)
         ax.grid(True, which="major", alpha=0.35, linewidth=0.8)
         ax.grid(False, which="minor")
         ax.minorticks_on()
@@ -608,7 +764,7 @@ def main() -> int:
 
     for case in cases:
         compute_params = dict(case.params)
-        if case.model == "rough-single":
+        if case.model in {"rough-single", "rough-multi"}:
             compute_params["_progress"] = True
             compute_params["_progress_label"] = case.label
         impedance = compute_surface_impedance(case.model, freq_hz, compute_params)
@@ -652,6 +808,8 @@ def main() -> int:
         args.profile_plot,
         args.show_plot,
         args.profile_quantity,
+        args.profile_x_min_um,
+        args.profile_x_max_um,
     )
     if profile_plot_result:
         print(f"Saved profile plot: {profile_plot_result}")

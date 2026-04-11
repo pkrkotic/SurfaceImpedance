@@ -1,23 +1,25 @@
 {
   "base_layer": {
     "name": "Base",
-    "material": "Cu",
+    "material": "Stainless Steel",
     "note": "half-space",
     "epsilon": [1.0, 0.0],
     "mu": [1.0, 0.0],
-    "sigma": 5.8e7,
-    "tau": 0.0
+    "sigma": 1350000.0,
+    "tau": 0.0,
+    "rq": 1000e-9
   },
   "layers": [
     {
       "name": "Layer 1",
-      "material": "NEG",
-      "note": "",
+      "material": "Copper",
+      "note": "rq is the vacuum-to-copper transition",
       "epsilon": [1.0, 0.0],
       "mu": [1.0, 0.0],
-      "sigma": 1e6,
+      "sigma": 1350000.0,
       "tau": 0.0,
-      "thickness": 200e-9
+      "thickness": 75e-6,
+      "rq": 400e-9
     }
   ]
 }

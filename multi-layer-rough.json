@@ -1,0 +1,47 @@
+{
+  "base_layer": {
+    "name": "Base",
+    "material": "Cu-Be",
+    "note": "half-space",
+    "epsilon": [1.0, 0.0],
+    "mu": [1.0, 0.0],
+    "sigma": 21e6,
+    "tau": 0.0,
+    "rq": 60e-9
+  },
+  "layers": [
+    {
+      "name": "Layer 1",
+      "material": "Cu",
+      "note": "rq is the vacuum-to-NEG transition",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 58e6,
+      "tau": 0.0,
+      "thickness": 1e-6,
+      "rq": 60e-9
+    },
+	{
+      "name": "Layer 2",
+      "material": "Ni",
+      "note": "rq is the vacuum-to-NEG transition",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 1.8e6,
+      "tau": 0.0,
+      "thickness": 2.75e-6,
+      "rq": 60e-9
+    },
+	{
+      "name": "Layer 3",
+      "material": "Au",
+      "note": "rq is the vacuum-to-NEG transition",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 8.6e6,
+      "tau": 0.0,
+      "thickness": 1.0e-6,
+      "rq": 60e-9
+    }
+  ]
+}

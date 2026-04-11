@@ -13,6 +13,9 @@ build/
 # Results (generated data)
 results/
 
+# Test documents
+docs/
+
 # VS Code
 .vscode/
 
