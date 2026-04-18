@@ -1,0 +1,25 @@
+{
+  "base_layer": {
+    "name": "Base",
+    "material": "Cu",
+    "note": "half-space",
+    "epsilon": [1.0, 0.0],
+    "mu": [1.0, 0.0],
+    "sigma": 5.8e7,
+    "tau": 0.0,
+    "rq": 0.3e-6
+  },
+  "layers": [
+    {
+      "name": "Layer 1",
+      "material": "NEG",
+      "note": "175 nm, Rq = 0.3 um",
+      "epsilon": [1.0, 0.0],
+      "mu": [1.0, 0.0],
+      "sigma": 1e6,
+      "tau": 0.0,
+      "thickness": 175e-9,
+      "rq": 0.3e-6
+    }
+  ]
+}

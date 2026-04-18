@@ -24,6 +24,8 @@ class ProfileResult:
     x_m: np.ndarray
     normalized_conductivity: np.ndarray
     normalized_magnetic_field: np.ndarray
+    current_density_magnitude: np.ndarray
+    normalized_current_density: np.ndarray
     normalized_power_loss_density: np.ndarray
 
 
@@ -398,6 +400,8 @@ def _build_smooth_half_space_profile(
         x_m=x_m,
         normalized_conductivity=normalized_conductivity,
         normalized_magnetic_field=_normalize_profile(np.abs(magnetic_field)),
+        current_density_magnitude=np.abs(current_density),
+        normalized_current_density=_normalize_profile(np.abs(current_density)),
         normalized_power_loss_density=_normalize_profile(power_loss_density),
     )
 
@@ -560,6 +564,8 @@ def _build_multilayer_profile(
         x_m=x_m,
         normalized_conductivity=normalized_conductivity,
         normalized_magnetic_field=_normalize_profile(np.abs(magnetic_field)),
+        current_density_magnitude=np.abs(current_density),
+        normalized_current_density=_normalize_profile(np.abs(current_density)),
         normalized_power_loss_density=_normalize_profile(power_loss_density),
     )
 
@@ -645,6 +651,8 @@ def solve_tridiagonal_profile_single(
         x_m=xp,
         normalized_conductivity=sigma / sigma_metal,
         normalized_magnetic_field=_normalize_profile(np.abs(b_profile)),
+        current_density_magnitude=np.abs(j_profile),
+        normalized_current_density=_normalize_profile(np.abs(j_profile)),
         normalized_power_loss_density=_normalize_profile(power_loss_density),
     )
 
@@ -715,6 +723,8 @@ def solve_tridiagonal_profile_multilayer(
         x_m=xp,
         normalized_conductivity=sigma / sigma_ref,
         normalized_magnetic_field=_normalize_profile(np.abs(b_profile)),
+        current_density_magnitude=np.abs(j_profile),
+        normalized_current_density=_normalize_profile(np.abs(j_profile)),
         normalized_power_loss_density=_normalize_profile(power_loss_density),
     )
 

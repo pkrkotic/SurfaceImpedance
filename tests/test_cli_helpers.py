@@ -108,13 +108,15 @@ class TestCliHelpers(unittest.TestCase):
                 "--profile-quantity",
                 "conductivity",
                 "--profile-quantity",
+                "current-density",
+                "--profile-quantity",
                 "power-loss",
                 "--profile-plot",
                 "profile.png",
             ]
         )
         self.assertEqual(args.profile_frequency, 1e9)
-        self.assertEqual(args.profile_quantity, ["conductivity", "power-loss"])
+        self.assertEqual(args.profile_quantity, ["conductivity", "current-density", "power-loss"])
         self.assertEqual(args.profile_plot, Path("profile.png"))
 
     def test_parser_accepts_profile_x_limits_in_um(self) -> None:
@@ -129,6 +131,18 @@ class TestCliHelpers(unittest.TestCase):
         )
         self.assertEqual(args.profile_x_min_um, -0.5)
         self.assertEqual(args.profile_x_max_um, 2.0)
+
+    def test_parser_accepts_profile_overlay_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "--profile-overlay-cases",
+                "--profile-normalize-to",
+                "smooth",
+            ]
+        )
+        self.assertTrue(args.profile_overlay_cases)
+        self.assertEqual(args.profile_normalize_to, "smooth")
 
     def test_profile_layer_centers_use_air_facing_last_layer_convention(self) -> None:
         case = ComparisonCase(

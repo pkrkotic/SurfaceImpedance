@@ -239,6 +239,7 @@ class TestModels(unittest.TestCase):
         self.assertEqual(profile.x_m.shape, profile.normalized_conductivity.shape)
         self.assertTrue(np.all(profile.normalized_conductivity >= 0.0))
         self.assertTrue(np.all(profile.normalized_magnetic_field >= 0.0))
+        self.assertTrue(np.all(profile.normalized_current_density >= 0.0))
         self.assertTrue(np.all(profile.normalized_power_loss_density >= 0.0))
 
     def test_compute_profile_for_rough_multi_returns_normalized_arrays(self) -> None:
@@ -261,6 +262,7 @@ class TestModels(unittest.TestCase):
         self.assertEqual(profile.x_m.shape, profile.normalized_conductivity.shape)
         self.assertTrue(np.all(profile.normalized_conductivity >= 0.0))
         self.assertTrue(np.all(profile.normalized_magnetic_field >= 0.0))
+        self.assertTrue(np.all(profile.normalized_current_density >= 0.0))
         self.assertTrue(np.all(profile.normalized_power_loss_density >= 0.0))
 
     def test_compute_profile_for_rough_multi_json_stack_returns_normalized_arrays(self) -> None:
@@ -302,6 +304,7 @@ class TestModels(unittest.TestCase):
         self.assertEqual(profile.x_m.shape, profile.normalized_conductivity.shape)
         self.assertTrue(np.all(profile.normalized_conductivity >= 0.0))
         self.assertTrue(np.all(profile.normalized_magnetic_field >= 0.0))
+        self.assertTrue(np.all(profile.normalized_current_density >= 0.0))
         self.assertTrue(np.all(profile.normalized_power_loss_density >= 0.0))
 
     def test_compute_profile_for_half_space_returns_finite_arrays(self) -> None:
@@ -319,6 +322,7 @@ class TestModels(unittest.TestCase):
         )
         self.assertTrue(np.all(np.isfinite(profile.normalized_conductivity)))
         self.assertTrue(np.all(np.isfinite(profile.normalized_magnetic_field)))
+        self.assertTrue(np.all(np.isfinite(profile.normalized_current_density)))
         self.assertTrue(np.all(np.isfinite(profile.normalized_power_loss_density)))
 
     def test_compute_profile_for_multi_layer_returns_finite_arrays(self) -> None:
@@ -349,6 +353,7 @@ class TestModels(unittest.TestCase):
         self.assertEqual(profile.x_m.shape, profile.normalized_conductivity.shape)
         self.assertTrue(np.all(np.isfinite(profile.normalized_conductivity)))
         self.assertTrue(np.all(np.isfinite(profile.normalized_magnetic_field)))
+        self.assertTrue(np.all(np.isfinite(profile.normalized_current_density)))
         self.assertTrue(np.all(np.isfinite(profile.normalized_power_loss_density)))
         self.assertGreater(float(np.max(profile.normalized_conductivity)), 0.0)
 

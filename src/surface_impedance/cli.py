@@ -170,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--profile-quantity",
         action="append",
-        choices=["conductivity", "magnetic-field", "power-loss"],
+        choices=["conductivity", "magnetic-field", "current-density", "power-loss"],
         default=[],
         help=(
             "Profile quantity to plot versus z. Repeat to show multiple quantities. "
@@ -186,6 +186,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--profile-x-max-um",
         type=float,
         help="Optional upper x-limit for profile plots in um.",
+    )
+    parser.add_argument(
+        "--profile-overlay-cases",
+        action="store_true",
+        help="Overlay all profile cases on a shared axis instead of separate subplots.",
+    )
+    parser.add_argument(
+        "--profile-normalize-to",
+        help=(
+            "Case label used as the normalization reference for overlaid profile comparisons. "
+            "Currently supported for current-density overlays."
+        ),
     )
     return parser
 
@@ -638,6 +650,8 @@ def maybe_plot_profiles(
     requested_quantities: list[str],
     x_min_um: float | None = None,
     x_max_um: float | None = None,
+    overlay_cases: bool = False,
+    normalize_to_label: str | None = None,
 ) -> Path | None:
     if not cases:
         return None
@@ -651,16 +665,110 @@ def maybe_plot_profiles(
             "Plotting requested, but matplotlib is not installed. Install with 'pip install -e .[plot]'."
         ) from exc
 
-    quantities = requested_quantities or ["conductivity", "magnetic-field", "power-loss"]
+    quantities = requested_quantities or [
+        "conductivity",
+        "magnetic-field",
+        "current-density",
+        "power-loss",
+    ]
     quantity_specs = {
         "conductivity": ("Normalized conductivity", "normalized_conductivity", "-"),
         "magnetic-field": ("Normalized |B(z)|", "normalized_magnetic_field", "--"),
+        "current-density": ("Normalized |J(z)|", "normalized_current_density", "-."),
         "power-loss": (
             "Normalized power-loss density",
             "normalized_power_loss_density",
             ":",
         ),
     }
+
+    global_x_min_um = min(float(np.min(profile.x_m * 1e6)) for _, profile in cases)
+    global_x_max_um = max(float(np.max(profile.x_m * 1e6)) for _, profile in cases)
+    plot_x_min_um = global_x_min_um if x_min_um is None else x_min_um
+    plot_x_max_um = global_x_max_um if x_max_um is None else x_max_um
+
+    if plot_x_min_um >= plot_x_max_um:
+        raise ValueError("profile-x-min-um must be smaller than profile-x-max-um.")
+
+    if overlay_cases:
+        if len(quantities) != 1:
+            raise ValueError("profile-overlay-cases currently requires exactly one --profile-quantity.")
+
+        quantity = quantities[0]
+        if normalize_to_label is not None and quantity != "current-density":
+            raise ValueError(
+                "profile-normalize-to is currently supported only for current-density overlays."
+            )
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 4.5))
+        label, attribute, linestyle = quantity_specs[quantity]
+
+        normalization_scale = 1.0
+        ylabel = label
+        if normalize_to_label is not None:
+            reference_matches = [
+                profile
+                for case, profile in cases
+                if case.label == normalize_to_label
+            ]
+            if not reference_matches:
+                available = ", ".join(case.label for case, _ in cases)
+                raise ValueError(
+                    f"profile-normalize-to='{normalize_to_label}' not found. Available labels: {available}"
+                )
+            reference_profile = reference_matches[0]
+            x_ref_um = reference_profile.x_m * 1e6
+            mask = (x_ref_um >= plot_x_min_um) & (x_ref_um <= plot_x_max_um)
+            reference_values = reference_profile.current_density_magnitude[mask]
+            if reference_values.size == 0:
+                raise ValueError("Reference profile has no samples inside the requested x-range.")
+            normalization_scale = float(np.max(reference_values))
+            if normalization_scale <= 0.0:
+                raise ValueError("Reference profile current-density maximum must be positive.")
+            ylabel = f"|J(z)| / max_ref(|J(z)|) [{normalize_to_label}]"
+
+        for index, (case, profile) in enumerate(cases):
+            color = palette[index % len(palette)]
+            x_um = profile.x_m * 1e6
+            if normalize_to_label is not None:
+                values = profile.current_density_magnitude / normalization_scale
+            else:
+                values = getattr(profile, attribute)
+            ax.plot(
+                x_um,
+                values,
+                linewidth=2.5,
+                linestyle=linestyle,
+                color=color,
+                label=case.label,
+            )
+
+        ax.axvline(0.0, color="black", linestyle=":", linewidth=1.2)
+        ax.set_xlim(plot_x_min_um, plot_x_max_um)
+        ax.set_xlabel(r"z [$\mu$m]")
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"z-profile comparison: {label}", fontsize=10)
+        ax.grid(True, which="major", alpha=0.35, linewidth=0.8)
+        ax.grid(False, which="minor")
+        ax.minorticks_on()
+        ax.legend()
+        for spine in ax.spines.values():
+            spine.set_linewidth(1.2)
+
+        fig.tight_layout()
+
+        saved_path = None
+        if plot_path:
+            plot_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(plot_path, dpi=180, bbox_inches="tight")
+            saved_path = plot_path
+
+        if show_plot:
+            plt.show()
+        else:
+            plt.close(fig)
+
+        return saved_path
 
     fig, axes = plt.subplots(
         nrows=len(cases),
@@ -669,13 +777,6 @@ def maybe_plot_profiles(
         squeeze=False,
         sharex=True,
     )
-    global_x_min_um = min(float(np.min(profile.x_m * 1e6)) for _, profile in cases)
-    global_x_max_um = max(float(np.max(profile.x_m * 1e6)) for _, profile in cases)
-    plot_x_min_um = global_x_min_um if x_min_um is None else x_min_um
-    plot_x_max_um = global_x_max_um if x_max_um is None else x_max_um
-
-    if plot_x_min_um >= plot_x_max_um:
-        raise ValueError("profile-x-min-um must be smaller than profile-x-max-um.")
 
     for row_index, (case, profile) in enumerate(cases):
         ax = axes[row_index][0]
@@ -810,6 +911,8 @@ def main() -> int:
         args.profile_quantity,
         args.profile_x_min_um,
         args.profile_x_max_um,
+        args.profile_overlay_cases,
+        args.profile_normalize_to,
     )
     if profile_plot_result:
         print(f"Saved profile plot: {profile_plot_result}")
